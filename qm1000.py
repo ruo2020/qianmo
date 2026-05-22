@@ -139,76 +139,106 @@ class QM1000Sign:
             self.log(f"签到异常: {e}", "ERROR")
             return "❌ 签到异常"
     
-    def get_task_status(self):
-        """获取任务状态"""
-        try:
-            url = f"{BASE_URL}/home.php?mod=task&do=view&id={TASK_ID}"
-            resp = self.session.get(url, timeout=15)
-            text = resp.text
-            
-            if '已完成' in text or '完成于' in text:
-                return 'completed'
-            elif '领取奖励' in text:
-                return 'can_draw'
-            elif '立即申请' in text or '申请任务' in text:
-                return 'available'
-            elif '进行中的任务' in text:
-                return 'in_progress'
-            else:
-                return 'unknown'
-        except Exception as e:
-            self.log(f"获取任务状态失败: {e}", "ERROR")
-            return 'unknown'
-    
     def packet(self):
-        """领取威望红包"""
+        """领取威望红包 - 标准流程版"""
         self.log("开始领取威望红包...")
         
-        # 获取formhash
-        formhash = self.get_formhash(f"{BASE_URL}/home.php?mod=task")
-        if not formhash:
-            return "❌ 获取formhash失败"
+        # 1. 进入任务页面
+        task_url = f"{BASE_URL}/home.php?mod=task&do=view&id={TASK_ID}"
+        self.log(f"访问任务页面: {task_url}")
         
         try:
-            # 检查当前任务状态
-            status = self.get_task_status()
-            self.log(f"任务状态: {status}")
+            resp = self.session.get(task_url, timeout=15)
+            resp.encoding = 'utf-8'
+            page_text = resp.text
             
-            if status == 'completed':
+            # 2. 检查是否已完成
+            if '已完成' in page_text or '完成于' in page_text:
+                self.log("检测到任务已完成")
+                # 尝试直接领取奖励
+                draw_match = re.search(r'<a href="(home\.php\?mod=task&do=draw&id={TASK_ID}[^"]*)"', page_text)
+                if draw_match:
+                    draw_url = f"{BASE_URL}/{draw_match.group(1)}"
+                    self.log(f"尝试领取奖励: {draw_url}")
+                    draw_resp = self.session.get(draw_url, timeout=15)
+                    if '成功' in draw_resp.text or '威望' in draw_resp.text:
+                        point_match = re.search(r'威望\s*([+-]?\d+)', draw_resp.text)
+                        if point_match:
+                            return f"✅ 领取成功 +{point_match.group(1)}威望"
+                        return "✅ 领取成功"
                 return "ℹ️ 今日红包已领取"
             
-            # 申请或领取任务
-            if status == 'available':
-                apply_url = f"{BASE_URL}/home.php?mod=task&do=apply&id={TASK_ID}"
-                apply_data = {'formhash': formhash, 'applysubmit': 'yes'}
-                apply_resp = self.session.post(apply_url, data=apply_data, timeout=15)
-                
-                if '申请成功' in apply_resp.text or 'success' in apply_resp.text.lower():
-                    self.log("任务申请成功，等待2秒...")
-                    time.sleep(2)
-                    status = 'can_draw'
+            # 3. 查找“立即申请”按钮并获取formhash
+            apply_match = re.search(r'<a href="(home\.php\?mod=task&do=apply&id={TASK_ID}&formhash=[a-f0-9]+)"', page_text)
+            if not apply_match:
+                # 尝试另一种正则匹配
+                apply_match = re.search(r'apply&id={TASK_ID}&formhash=([a-f0-9]+)', page_text)
+            
+            if apply_match:
+                # 提取申请URL或formhash
+                if 'formhash=' in apply_match.group(0):
+                    if apply_match.group(1):
+                        formhash = apply_match.group(1)
+                    else:
+                        # 从完整URL中提取formhash
+                        url_part = apply_match.group(0)
+                        formhash_match = re.search(r'formhash=([a-f0-9]+)', url_part)
+                        if formhash_match:
+                            formhash = formhash_match.group(1)
+                        else:
+                            formhash = None
+                    
+                    if formhash:
+                        self.log(f"找到申请链接，formhash: {formhash[:8]}...")
+                        # 构建申请URL并访问
+                        apply_url = f"{BASE_URL}/home.php?mod=task&do=apply&id={TASK_ID}&formhash={formhash}"
+                        self.log(f"点击申请: {apply_url}")
+                        apply_resp = self.session.get(apply_url, timeout=15)
+                        
+                        # 检查申请结果
+                        if '申请成功' in apply_resp.text or 'success' in apply_resp.text.lower():
+                            self.log("申请成功，等待2秒后领取...")
+                            time.sleep(2)
+                            
+                            # 申请成功后，再次进入任务页面领取奖励
+                            final_resp = self.session.get(task_url, timeout=15)
+                            draw_match = re.search(r'<a href="(home\.php\?mod=task&do=draw&id={TASK_ID}[^"]*)"', final_resp.text)
+                            if draw_match:
+                                draw_url = f"{BASE_URL}/{draw_match.group(1)}"
+                                draw_resp = self.session.get(draw_url, timeout=15)
+                                if '成功' in draw_resp.text:
+                                    point_match = re.search(r'威望\s*([+-]?\d+)', draw_resp.text)
+                                    if point_match:
+                                        return f"✅ 领取成功 +{point_match.group(1)}威望"
+                                    return "✅ 领取成功"
+                            return "❌ 申请成功但未找到领取链接"
+                        else:
+                            return "❌ 申请失败，请检查Cookie或任务条件"
+                    else:
+                        return "❌ 未找到formhash"
                 else:
-                    return "❌ 任务申请失败"
-            
-            if status in ['can_draw', 'in_progress']:
-                draw_url = f"{BASE_URL}/home.php?mod=task&do=draw&id={TASK_ID}"
-                draw_data = {'formhash': formhash, 'drawsubmit': 'yes'}
-                draw_resp = self.session.post(draw_url, data=draw_data, timeout=15)
-                
-                if '成功' in draw_resp.text:
-                    point_match = re.search(r'威望\s*([+-]?\d+)', draw_resp.text)
-                    if point_match:
-                        return f"✅ 领取成功 +{point_match.group(1)}威望"
-                    return "✅ 领取成功"
-                elif '已完成' in draw_resp.text:
-                    return "ℹ️ 今日红包已领取"
+                    return "❌ 申请链接格式异常"
+            else:
+                # 4. 如果没有找到“立即申请”按钮，检查是否已经申请过
+                if '进行中的任务' in page_text:
+                    self.log("检测到任务进行中，尝试领取...")
+                    draw_match = re.search(r'<a href="(home\.php\?mod=task&do=draw&id={TASK_ID}[^"]*)"', page_text)
+                    if draw_match:
+                        draw_url = f"{BASE_URL}/{draw_match.group(1)}"
+                        draw_resp = self.session.get(draw_url, timeout=15)
+                        if '成功' in draw_resp.text:
+                            point_match = re.search(r'威望\s*([+-]?\d+)', draw_resp.text)
+                            if point_match:
+                                return f"✅ 领取成功 +{point_match.group(1)}威望"
+                            return "✅ 领取成功"
+                    return "ℹ️ 任务进行中但无领取链接"
                 else:
-                    return "❌ 领取失败"
-            
-            return "❌ 未知状态"
-            
+                    return "ℹ️ 未找到申请入口，可能今日已领取或无权限"
+                    
         except Exception as e:
             self.log(f"红包处理异常: {e}", "ERROR")
+            import traceback
+            self.log(traceback.format_exc(), "ERROR")
             return "❌ 处理异常"
     
     def run(self):
