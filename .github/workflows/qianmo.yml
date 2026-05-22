@@ -4,7 +4,6 @@ on:
   # 北京时间 09:00（UTC 01:00）
   schedule:
     - cron: '0 1 * * *'
-
   # 支持手动点击运行
   workflow_dispatch:
 
@@ -38,6 +37,7 @@ jobs:
           pip install requests
 
       - name: Run sign script
+        # ✅ 关键：确保 Secrets 正确注入环境变量
         env:
           QM1000_COOKIE: ${{ secrets.QM1000_COOKIE }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
