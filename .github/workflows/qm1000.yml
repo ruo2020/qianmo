@@ -2,9 +2,11 @@ name: 阡陌居签到
 
 on:
   schedule:
-    - cron: '0 17 * * *'   # 北京时间 01:00
-    - cron: '0 5 * * *'    # 北京时间 13:00
-  workflow_dispatch:
+    # 每天北京时间 1:00 执行
+    # GitHub 使用 UTC 时间，北京时间 = UTC+8
+    # 北京时间 1:00 = UTC 17:00 (前一天)
+    - cron: '0 17 * * *'   # UTC 17:00 = 北京时间 次日 1:00
+  workflow_dispatch:  # 支持手动触发
 
 jobs:
   sign:
