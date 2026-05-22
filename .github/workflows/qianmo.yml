@@ -1,1 +1,32 @@
+name: 阡陌居签到 & 威望红包
 
+on:
+  schedule:
+    # 每天 UTC 1:00（北京时间 9:00）
+    - cron: '0 1 * * *'
+  workflow_dispatch:  # 支持手动运行
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+
+      - name: Run script
+        env:
+          QM1000_COOKIE: ${{ secrets.QM1000_COOKIE }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_USER_ID: ${{ secrets.TG_USER_ID }}
+        run: |
+          python qianmo.py
