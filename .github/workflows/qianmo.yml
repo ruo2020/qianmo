@@ -1,6 +1,6 @@
 name: 阡陌居签到 & 威望红包
 
-on:
+于:
   # 北京时间 09:00（UTC 01:00）
   schedule:
     - cron: '0 1 * * *'
@@ -42,5 +42,5 @@ jobs:
           QM1000_COOKIE: ${{ secrets.QM1000_COOKIE }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_USER_ID: ${{ secrets.TG_USER_ID }}
-        run: |
-          python qianmo.py
+        run: python qianmo/qianmo.py
+
