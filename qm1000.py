@@ -212,42 +212,42 @@ class QM1000Sign:
             return "❌ 处理异常"
     
     def run(self):
-        """主运行函数"""
-        self.log("=" * 50)
-        self.log("阡陌居自动签到脚本启动")
-        self.log("=" * 50)
-        
-        # 检查登录状态
-        if not self.check_login():
-            error_msg = "登录失败，请检查Cookie配置"
-            self.log(error_msg, "ERROR")
-            self.send_telegram(f"❌ {error_msg}")
-            sys.exit(1)
-        
-        # 执行签到
-        sign_result = self.sign()
-        self.log(f"签到结果: {sign_result}")
-        
-        # 等待2秒
-        time.sleep(2)
-        
-        # 领取红包
-        packet_result = self.packet()
-        self.log(f"红包结果: {packet_result}")
-        
-        # 汇总结果
-        summary = f"签到: {sign_result}\n红包: {packet_result}"
-        self.log(f"\n最终结果:\n{summary}")
-        self.log("=" * 50)
-        
-        # 发送通知
-        self.send_telegram(summary)
-        
-        # 返回状态码 - 修改为更合理的判断
-if '✅' in sign_result and ('✅' in packet_result or 'ℹ️' in packet_result):
-    sys.exit(0)  # 成功或已领取都算成功
-else:
-    sys.exit(1)  # 只有真正的失败才返回1
+    """主运行函数"""
+    self.log("=" * 50)
+    self.log("阡陌居自动签到脚本启动")
+    self.log("=" * 50)
+    
+    # 检查登录状态
+    if not self.check_login():
+        error_msg = "登录失败，请检查Cookie配置"
+        self.log(error_msg, "ERROR")
+        self.send_telegram(f"❌ {error_msg}")
+        sys.exit(1)
+    
+    # 执行签到
+    sign_result = self.sign()
+    self.log(f"签到结果: {sign_result}")
+    
+    # 等待2秒
+    time.sleep(2)
+    
+    # 领取红包
+    packet_result = self.packet()
+    self.log(f"红包结果: {packet_result}")
+    
+    # 汇总结果
+    summary = f"签到: {sign_result}\n红包: {packet_result}"
+    self.log(f"\n最终结果:\n{summary}")
+    self.log("=" * 50)
+    
+    # 发送通知
+    self.send_telegram(summary)
+    
+    # 修改这里：签到成功就算成功，红包已领取也算成功
+    if '✅' in sign_result:
+        sys.exit(0)  # 成功
+    else:
+        sys.exit(1)  # 签到失败
 
 
 def main():
