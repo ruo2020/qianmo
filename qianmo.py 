@@ -1,0 +1,169 @@
+import requests
+import re
+import time
+import os
+from datetime import datetime
+
+# 配置
+URL = "https://www.1000qm.vip/forum.php"
+TASK_ID = "1"
+BASE = '/'.join(URL.split('/')[:-1])
+
+# Session
+s = requests.Session()
+s.headers.update({
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
+})
+
+# Cookie
+cookie_str = os.environ.get('QM1000_COOKIE', '')
+for c in cookie_str.split(';'):
+    if '=' in c:
+        k, v = c.strip().split('=', 1)
+        s.cookies.set(k, v)
+
+
+def tg_send(msg: str):
+    token = os.environ.get('TG_BOT_TOKEN')
+    uid = os.environ.get('TG_USER_ID')
+    if not (token and uid):
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={'chat_id': uid, 'text': msg},
+            timeout=10
+        )
+    except Exception:
+        pass
+
+
+def get_hash():
+    try:
+        text = s.get(f"{BASE}/home.php?mod=task", timeout=10).text
+        m = re.search(r'name="formhash" value="([a-f0-9]+)"', text)
+        return m.group(1) if m else None
+    except:
+        return None
+
+
+def check_status():
+    try:
+        url = f"{BASE}/home.php?mod=task&do=view&id={TASK_ID}"
+        text = s.get(url, timeout=10).text
+
+        if '已完成' in text or '完成于' in text:
+            return 'completed'
+        elif '进行中的任务' in text or '领取奖励' in text:
+            return 'applied'
+        elif '立即申请' in text or '申请后才可以' in text:
+            return 'available'
+        else:
+            return 'unknown'
+    except:
+        return 'unknown'
+
+
+def sign():
+    try:
+        r = s.get(f"{BASE}/plugin.php?id=dsu_paulsign:sign", timeout=10)
+        f = re.search(r'name="formhash" value="([a-f0-9]+)"', r.text)
+        if not f:
+            return "❌ 签到失败（无 formhash）"
+
+        data = {
+            'formhash': f.group(1),
+            'qdxq': 'kx',
+            'qdmode': '2',
+            'todaysay': '',
+            'fastreply': '0'
+        }
+
+        r = s.post(
+            f"{BASE}/plugin.php?id=dsu_paulsign:sign&operation=qiandao",
+            data=data,
+            timeout=10
+        )
+
+        if '成功' in r.text:
+            m = re.search(r'获得(\d+)点(\w+)', r.text)
+            return f"✅ 签到成功 +{m.group(1)}{m.group(2)}" if m else "✅ 签到成功"
+        elif '已经签到' in r.text:
+            return "ℹ️ 今日已签到"
+        else:
+            return "❌ 签到失败"
+    except Exception as e:
+        return f"❌ 签到异常: {e}"
+
+
+def packet():
+    h = get_hash()
+    if not h:
+        return "❌ 获取 formhash 失败"
+
+    try:
+        # 申请任务
+        r = s.post(
+            f"{BASE}/home.php?mod=task&do=apply&id={TASK_ID}",
+            data={'formhash': h, 'applysubmit': 'yes'},
+            timeout=10
+        )
+
+        if '申请成功' in r.text:
+            time.sleep(2)
+            r = s.post(
+                f"{BASE}/home.php?mod=task&do=draw&id={TASK_ID}",
+                data={'formhash': h, 'drawsubmit': 'yes'},
+                timeout=10
+            )
+            if '成功' in r.text:
+                m = re.search(r'威望\s*([+-]?\d+)', r.text)
+                return f"✅ 领取成功 +{m.group(1)}威望" if m else "✅ 领取成功"
+            return "❌ 领取失败"
+
+        if '已申请' in r.text:
+            r = s.post(
+                f"{BASE}/home.php?mod=task&do=draw&id={TASK_ID}",
+                data={'formhash': h, 'drawsubmit': 'yes'},
+                timeout=10
+            )
+            if '成功' in r.text:
+                m = re.search(r'威望\s*([+-]?\d+)', r.text)
+                return f"✅ 领取成功 +{m.group(1)}威望" if m else "✅ 领取成功"
+            return "❌ 已申请但领取失败"
+
+        return "ℹ️ 今日已完成或不可重复领取"
+
+    except Exception as e:
+        return f"❌ 红包异常: {e}"
+
+
+def main():
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    print(f"🏮 阡陌居 {now}")
+
+    # 登录检测
+    r = s.get(f"{BASE}/home.php?mod=spacecp", timeout=10)
+    if '退出' not in r.text:
+        msg = "❌ Cookie 失效"
+        tg_send(f"阡陌居\n{msg}")
+        print(msg)
+        return
+
+    sign_res = sign()
+    print(sign_res)
+
+    time.sleep(2)
+
+    pkt_res = packet()
+    print(pkt_res)
+
+    tg_send(
+        f"🏮 阡陌居 {now}\n"
+        f"签到：{sign_res}\n"
+        f"红包：{pkt_res}"
+    )
+
+
+if __name__ == "__main__":
+    main()
