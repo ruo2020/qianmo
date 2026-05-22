@@ -9,11 +9,18 @@ import re
 import time
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 # 配置
 BASE_URL = "https://www.1000qm.vip"
 TASK_ID = "1"  # 如果领取失败，可以尝试改为 "2" 或 "3"
+
+# 北京时间时区 (UTC+8)
+BEIJING_TZ = timezone(timedelta(hours=8))
+
+def get_beijing_time():
+    """获取北京时间"""
+    return datetime.now(BEIJING_TZ)
 
 class QM1000Sign:
     def __init__(self):
@@ -43,13 +50,13 @@ class QM1000Sign:
         print("✅ Cookie 已加载")
     
     def log(self, msg, level="INFO"):
-        """打印带时间戳的日志"""
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        """打印带时间戳的日志（使用北京时间）"""
+        timestamp = get_beijing_time().strftime('%Y-%m-%d %H:%M:%S')
         print(f"[{timestamp}] [{level}] {msg}")
         sys.stdout.flush()
     
     def send_telegram(self, message):
-        """发送Telegram通知"""
+        """发送Telegram通知（使用北京时间）"""
         token = os.environ.get('TG_BOT_TOKEN')
         user_id = os.environ.get('TG_USER_ID')
         
@@ -59,9 +66,11 @@ class QM1000Sign:
         
         try:
             url = f"https://api.telegram.org/bot{token}/sendMessage"
+            # 使用北京时间
+            beijing_now = get_beijing_time().strftime('%Y-%m-%d %H:%M:%S')
             data = {
                 'chat_id': user_id,
-                'text': f"🏮 阡陌居签到\n{message}\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                'text': f"🏮 阡陌居签到\n{message}\n{beijing_now} (北京时间)",
                 'parse_mode': 'HTML'
             }
             resp = requests.post(url, json=data, timeout=10)
