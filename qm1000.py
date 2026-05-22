@@ -243,11 +243,11 @@ class QM1000Sign:
         # 发送通知
         self.send_telegram(summary)
         
-        # 返回状态码
-        if '✅' in sign_result and '✅' in packet_result:
-            sys.exit(0)
-        else:
-            sys.exit(1)
+        # 返回状态码 - 修改为更合理的判断
+if '✅' in sign_result and ('✅' in packet_result or 'ℹ️' in packet_result):
+    sys.exit(0)  # 成功或已领取都算成功
+else:
+    sys.exit(1)  # 只有真正的失败才返回1
 
 
 def main():
