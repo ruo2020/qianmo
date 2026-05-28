@@ -63,14 +63,20 @@ def check_status():
         print(f"🔍 检查状态URL: {url}")
         text = requests_get(url).text
         
-        if '已完成' in text or '完成于' in text:
+        # 按优先级检测各种状态
+        if '已完成' in text or '完成于' in text or '领取奖励' not in text:
             return 'completed'
-        elif '进行中的任务' in text or '领取奖励' in text:
+        elif '不是进行中的任务' in text or '没有找到指定任务' in text:
+            return 'completed'  # 任务不存在说明已完成
+        elif '申请成功' in text:
             return 'applied'
         elif '立即申请' in text or '申请任务' in text:
+            # 进一步检查是否是因为CD限制
+            if '后可以再次申请' in text:
+                return 'completed'  # 有冷却时间说明已经领过
             return 'available'
-        elif '后可以再次申请' in text:
-            return 'available'
+        elif '进行中的任务' in text:
+            return 'applied'
         else:
             return 'unknown'
     except Exception as e:
@@ -119,53 +125,64 @@ def packet():
     """领取威望红包"""
     print("📋 开始处理威望红包...")
     
+    # 先检测当前任务状态
+    status = check_status()
+    print(f"📌 任务状态: {status}")
+    
+    if status == 'completed':
+        return "ℹ️ 今日威望红包已领取"
+    elif status == 'unknown':
+        # 如果状态检测失败，尝试使用原有逻辑
+        print("⚠️ 状态检测未知，尝试直接处理...")
+    
     h = get_hash()
     if not h:
         return "❌ 获取formhash失败"
     
     try:
-        # 申请任务
-        print("📌 申请任务...")
-        apply_url = f"{base}/home.php?mod=task&do=apply&id={TASK_ID}"
-        apply_data = {'formhash': h, 'applysubmit': 'yes'}
-        
-        apply_resp = requests_post(apply_url, data=apply_data)
-        
-        if not apply_resp:
-            return "❌ 申请任务失败（网络超时）"
-        
-        # 检查申请结果
-        if '申请成功' in apply_resp.text or 'success' in apply_resp.text.lower():
-            print("✅ 任务申请成功，等待2秒后领取...")
-            time.sleep(2)
+        # 如果是 available 状态，才执行申请
+        if status == 'available':
+            print("📌 申请任务...")
+            apply_url = f"{base}/home.php?mod=task&do=apply&id={TASK_ID}"
+            apply_data = {'formhash': h, 'applysubmit': 'yes'}
+            apply_resp = requests_post(apply_url, data=apply_data)
             
-            # 领取奖励
-            draw_url = f"{base}/home.php?mod=task&do=draw&id={TASK_ID}"
-            draw_data = {'formhash': h, 'drawsubmit': 'yes'}
-            r = requests_post(draw_url, data=draw_data)
-            if r and '成功' in r.text:
-                p = re.search(r'威望\s*([+-]?\d+)', r.text)
-                return f"✅ 申请成功 +{p.group(1)}威望" if p else "✅ 申请成功"
+            if not apply_resp:
+                return "❌ 申请任务失败（网络超时）"
+            
+            if '申请成功' in apply_resp.text or 'success' in apply_resp.text.lower():
+                print("✅ 任务申请成功，等待2秒后领取...")
+                time.sleep(2)
+            elif '已申请' in apply_resp.text:
+                print("📌 任务已申请过，继续领取...")
             else:
-                return "❌ 申请成功但领取失败"
-        elif apply_resp and '已申请' in apply_resp.text:
-            print("📌 任务已申请，尝试领取...")
-            time.sleep(1)
-            draw_url = f"{base}/home.php?mod=task&do=draw&id={TASK_ID}"
-            draw_data = {'formhash': h, 'drawsubmit': 'yes'}
-            r = requests_post(draw_url, data=draw_data)
-            if r and '成功' in r.text:
+                # 检查返回内容是否包含错误信息
+                if '不是进行中的任务' in apply_resp.text:
+                    return "ℹ️ 今日威望红包已领取"
+                return "❌ 申请失败"
+        
+        # 领取奖励（无论新申请还是已申请，都尝试领取）
+        print("📌 领取奖励...")
+        draw_url = f"{base}/home.php?mod=task&do=draw&id={TASK_ID}"
+        draw_data = {'formhash': h, 'drawsubmit': 'yes'}
+        r = requests_post(draw_url, data=draw_data)
+        
+        if r:
+            if '成功' in r.text:
                 p = re.search(r'威望\s*([+-]?\d+)', r.text)
                 return f"✅ 领取成功 +{p.group(1)}威望" if p else "✅ 领取成功"
-            else:
-                return "❌ 已申请但领取失败"
-        else:
-            # 检查是否已完成
-            status = check_status()
-            if status == 'completed':
-                return "ℹ️ 今日红包已领取"
-            else:
-                return "❌ 申请失败，可能今日已领或条件不足"
+            elif '未完成任务' in r.text:
+                return "❌ 任务未完成，无法领取"
+            elif '操作失败' in r.text:
+                return "ℹ️ 今日威望红包已领取"
+        
+        # 再次检查状态确认
+        time.sleep(1)
+        final_status = check_status()
+        if final_status == 'completed':
+            return "ℹ️ 今日威望红包已领取"
+        
+        return "❌ 领取失败"
                 
     except Exception as e:
         print(f"❌ 红包处理异常: {e}")
